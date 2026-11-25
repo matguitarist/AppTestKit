@@ -16,7 +16,8 @@ Shared rules for how every project is laid out and named:
   - `SelfTest`: `check`, `skip`, `refuse`, `finish`, `run`, `wait`; a shared run behind static methods.
   - `SnapshotRequest`: `APP_SNAPSHOT`, `APP_SNAPSHOT_PAGES`, `APP_SNAPSHOT_MIN`, `APP_SNAPSHOT_SIZE`.
   - `SnapshotRun`: start, pages, states, Settings tabs, finish.
-  - `WindowShot`: one window to one PNG with screencapture, or drawn when Screen Recording is off.
+  - `WindowShot`: one window to one PNG with screencapture (through ProcessKit), or drawn when Screen Recording is
+    off; a screen area holds only the app's own windows.
   - `Appearance`, `DisplayWake`.
 - `Tests/AppTestKitTests/` Swift Testing. Nothing is written outside the system's temporary folder; /tmp paths in
   tests are only strings.
