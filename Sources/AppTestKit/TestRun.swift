@@ -14,10 +14,13 @@ public enum TestRun {
     public enum Refusal: Error, Equatable, Sendable, CustomStringConvertible {
         /// `APP_STORE` names a path outside /tmp.
         case outsideTemporaryFolder(String)
+        /// A self-test or snapshots were asked for with no `APP_STORE`: they would run on the person's real data.
+        case noTestStore
 
         public var description: String {
             switch self {
             case .outsideTemporaryFolder(let path): "APP_STORE must be a file in /tmp, not \(path)"
+            case .noTestStore: "--selftest and APP_SNAPSHOT need APP_STORE set to a file in /tmp"
             }
         }
     }
@@ -50,17 +53,24 @@ public enum TestRun {
     }
 
     /// The test store, or nil in a normal run (no `APP_STORE`). Throws when `APP_STORE` points outside /tmp.
-    public static func storeURL(env: [String: String] = ProcessInfo.processInfo.environment) throws(Refusal) -> URL? {
-        guard let path = env[storeKey], !path.isEmpty else { return nil }
+    /// Also throws when a self-test (`--selftest`) or snapshots (`APP_SNAPSHOT`) were asked for without a test store,
+    /// so the refusal comes before the app opens its real data, not after.
+    public static func storeURL(env: [String: String] = ProcessInfo.processInfo.environment,
+                                arguments: [String] = CommandLine.arguments) throws(Refusal) -> URL? {
+        guard let path = env[storeKey], !path.isEmpty else {
+            if wantsTestStore(env: env, arguments: arguments) { throw .noTestStore }
+            return nil
+        }
         guard isInTemporaryFolder(path) else { throw .outsideTemporaryFolder(path) }
         return URL(fileURLWithPath: path).standardizedFileURL
     }
 
     /// The test store, or nil in a normal run. When `APP_STORE` points outside /tmp, says so on stderr and exits
     /// with 1 before anything is read or written: call it where the app decides where its data lives.
-    public static func store(env: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
+    public static func store(env: [String: String] = ProcessInfo.processInfo.environment,
+                             arguments: [String] = CommandLine.arguments) -> URL? {
         do {
-            return try storeURL(env: env)
+            return try storeURL(env: env, arguments: arguments)
         } catch {
             FileHandle.standardError.write(Data("\(error.description)\n".utf8))
             exit(1)
@@ -69,6 +79,12 @@ public enum TestRun {
 
     /// True when the run may use a test store: `APP_STORE` is set and inside /tmp.
     public static func hasTestStore(env: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
-        (try? storeURL(env: env)) != nil
+        (try? storeURL(env: env, arguments: [])) != nil
+    }
+
+    /// True when the app was started for a self-test or snapshots, which must only ever run on a test store.
+    public static func wantsTestStore(env: [String: String] = ProcessInfo.processInfo.environment,
+                                      arguments: [String] = CommandLine.arguments) -> Bool {
+        arguments.contains("--selftest") || !(env[SnapshotRequest.folderKey] ?? "").isEmpty
     }
 }

@@ -81,4 +81,11 @@ struct TestRunTests {
         #expect(!TestRun.isSeeded(env: ["APP_STORE": "/tmp/x.json", "APP_SEED": "0"]))
         #expect(!TestRun.isSeeded(env: ["APP_SEED": "1"]))
     }
+
+    @Test func aSelfTestOrSnapshotsWithNoStoreAreRefusedBeforeTheAppOpensItsData() {
+        #expect(throws: TestRun.Refusal.noTestStore) { try TestRun.storeURL(env: [:], arguments: ["App", "--selftest"]) }
+        #expect(throws: TestRun.Refusal.noTestStore) { try TestRun.storeURL(env: ["APP_SNAPSHOT": "/tmp/App-shots"], arguments: ["App"]) }
+        #expect(throws: TestRun.Refusal.noTestStore) { try TestRun.storeURL(env: ["APP_STORE": ""], arguments: ["App", "--selftest"]) }
+        #expect((try? TestRun.storeURL(env: [:], arguments: ["App"])) == .some(nil))
+    }
 }
