@@ -16,7 +16,7 @@ macOS 14 or later. AppKit only.
 SwiftPM (`Package.swift`):
 
 ```swift
-.package(url: "https://github.com/matguitarist/AppTestKit", from: "0.1.0"),
+.package(url: "https://github.com/matguitarist/AppTestKit", from: "0.2.0"),
 // in the app target:
 .product(name: "AppTestKit", package: "AppTestKit"),
 ```
@@ -27,7 +27,7 @@ XcodeGen (`project.yml`):
 packages:
   AppTestKit:
     url: https://github.com/matguitarist/AppTestKit
-    from: 0.1.0
+    from: 0.2.0
 targets:
   App:
     dependencies:
@@ -86,6 +86,8 @@ func applicationWillTerminate(_ notification: Notification) {
 }
 ```
 
+- `check` returns whether it passed, so a check can guard the ones that need it:
+  `guard check("a game is added", added != nil) else { return }` or `if check(…) { … }`. The result is discardable.
 - `run(refusal:allowed:)` refuses ("SELFTEST refused: …", exit 1) unless `APP_STORE` is in /tmp and `allowed`
   holds, the app's own condition: a sample tree in place, a pretend backend.
 - `finish(code: 1)` stops a run that can't go on, with no summary.
@@ -120,13 +122,41 @@ enum Snapshot {
 }
 ```
 
+Groups, keys, settle times and shots taken once:
+
+```swift
+// Every state shoots with APP_SNAPSHOT_PAGES=states, and each one by its own name too.
+await run.shootPages(states.map(\.name), in: "states", settle: { $0.hasPrefix("guide-") ? .seconds(2) : nil }) { name in
+    states.first { $0.name == name }?.show(model)
+}
+await run.shoot("repair-new-sheet", in: "sheets", window: { WindowShot.mainWindow()?.attachedSheet },
+                show: { model.sheet = .newRepair }, hide: { model.sheet = nil })
+// apps-progress-light.png, asked for as "progress".
+await run.shoot("apps-progress", when: "progress", show: { model.progress = sample }, hide: { model.progress = nil })
+// settings-sync-server-stop.png, in the look the app has now: no -light or -dark.
+await run.capture("settings-sync-server-stop", window: WindowShot.otherWindow())
+```
+
+- `in group:` shoots a page or state when its group ("states", "sheets") is on `APP_SNAPSHOT_PAGES`, as well as when
+  its own name is. `run.wants(name, in: group)` asks the same.
+- `when:` is the name `APP_SNAPSHOT_PAGES` asks for when it isn't the file's.
+- `shootPages(settle:)` gives a page its own time to draw; nil keeps `run.settle`.
+- `run.capture(name, window:)` with no look writes `<name>.png`; `run.url(name)` is its path.
+- Write `window:`, `show:` and `select:` closures inline, or pass a function's name. A closure kept in a `let` first
+  doesn't compile under Swift 6 ("converting non-Sendable function value to '@MainActor @Sendable () -> NSWindow?'
+  may introduce data races"): wrap it, `window: { pick() }`, or give the `let` the type `@MainActor () -> NSWindow?`.
 - `run.start(mainFrame:)` puts the main window at a fixed frame first and forgets its saved one, so every run starts
   the same whatever the person's own window was.
 - `run.forEachAppearance { look in … }` and `run.capture(name, look, window:, area:)` for anything the helpers don't
   cover: a window of its own, a tall page, a panel.
-- `area: .screen` takes the window's area of the screen, so an alert sheet or a popover over it shows; `.automatic`
-  does that only when a sheet or popover is open.
+- `area: .screen` takes the window's area of the screen, so an alert sheet, a popover or a menu over it shows;
+  `.automatic` does that only when a sheet or popover is open. Only the app's own windows are in it: a terminal or
+  another app's window over this one stays out, and where no window is, the PNG is clear.
 - `WindowShot.captureNow` blocks the main thread, for a menu shot from a timer while it is open.
+
+screencapture runs through [ProcessKit](https://github.com/matguitarist/ProcessKit), on a thread of its own, and is
+stopped after `WindowShot.screencaptureTimeout` (10 s), so a capture that hangs is tried again instead of holding the
+run.
 
 Captures need Screen Recording permission for the app that started this one (the terminal, or Claude). Without it, the
 window is drawn from its views and the line says "(fallback: no Screen Recording permission, sidebars and glass are

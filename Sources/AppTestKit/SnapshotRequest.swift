@@ -42,6 +42,13 @@ public struct SnapshotRequest: Sendable, Equatable {
         pages?.contains(page) ?? true
     }
 
+    /// True when `name` should be shot because it, or its `group` ("states", "sheets"), is on the list, or there is
+    /// no list. A group name shoots every page in it without naming each one.
+    public func wants(_ name: String, in group: String?) -> Bool {
+        guard let group, let pages else { return wants(name) }
+        return pages.contains(name) || pages.contains(group)
+    }
+
     /// True when any of these pages should be shot.
     public func wantsAny(_ pages: [String]) -> Bool {
         pages.contains(where: wants)
@@ -50,6 +57,11 @@ public struct SnapshotRequest: Sendable, Equatable {
     /// `<folder>/<name>-light.png` or `-dark.png`.
     public func url(_ name: String, _ appearance: Appearance) -> URL {
         folder.appending(path: "\(name)-\(appearance.rawValue).png")
+    }
+
+    /// `<folder>/<name>.png`: one PNG with no look in its name, for a shot taken once.
+    public func url(_ name: String) -> URL {
+        folder.appending(path: "\(name).png")
     }
 
     /// "a,b, c" as a set; nil when empty, which means every page.

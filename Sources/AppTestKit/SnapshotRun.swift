@@ -56,11 +56,17 @@ public final class SnapshotRun {
     /// True when `page` should be shot (`APP_SNAPSHOT_PAGES`).
     public func wants(_ page: String) -> Bool { request.wants(page) }
 
+    /// True when `name`, or its `group` ("states", "sheets"), should be shot.
+    public func wants(_ name: String, in group: String?) -> Bool { request.wants(name, in: group) }
+
     /// True when any of these should be shot.
     public func wantsAny(_ pages: [String]) -> Bool { request.wantsAny(pages) }
 
     /// The PNG for `name` in `appearance`.
     public func url(_ name: String, _ appearance: Appearance) -> URL { request.url(name, appearance) }
+
+    /// `<name>.png`, with no look in its name.
+    public func url(_ name: String) -> URL { request.url(name) }
 
     // MARK: Steps
 
@@ -110,6 +116,19 @@ public final class SnapshotRun {
         return await WindowShot.capture(window, to: url(name, appearance), area: area, fallback: fallback, layout: layout)
     }
 
+    /// Takes `<name>.png` of `window`, the main window when nil, in the look the app has now: a shot taken once,
+    /// with no -light or -dark in its name (a confirmation over Settings, a printed page). Prints
+    /// "SNAPSHOT no window" when there is none.
+    @discardableResult
+    public func capture(_ name: String, window: NSWindow? = nil, area: WindowShot.Area = .window,
+                        fallback: Bool = true) async -> WindowShot.Outcome {
+        guard let window = window ?? WindowShot.mainWindow() else {
+            output("SNAPSHOT no window")
+            return .noWindow
+        }
+        return await WindowShot.capture(window, to: url(name), area: area, fallback: fallback, layout: layout)
+    }
+
     /// Runs `body` once in light and once in dark, with the look applied first.
     public func forEachAppearance(_ body: @MainActor (Appearance) async -> Void) async {
         for appearance in Appearance.allCases {
@@ -120,16 +139,20 @@ public final class SnapshotRun {
 
     /// Every page asked for, in light then in dark: `select` shows it, then it settles and is shot as
     /// `<page>-<appearance>.png`. `window` picks the window per page (the main one by default).
+    /// `group` ("states") shoots them all when it is on `APP_SNAPSHOT_PAGES`, as well as each by its name.
+    /// `settle` gives a page its own time to draw (a sheet, a page that loads pictures); nil keeps `settle`.
     public func shootPages(_ pages: [String],
+                           in group: String? = nil,
                            window: @MainActor (String) -> NSWindow? = { _ in nil },
                            area: WindowShot.Area = .window,
+                           settle: @MainActor (String) -> Duration? = { _ in nil },
                            select: @MainActor (String) async -> Void) async {
-        let wanted = pages.filter(wants)
+        let wanted = pages.filter { wants($0, in: group) }
         guard !wanted.isEmpty else { return }
         await forEachAppearance { appearance in
             for page in wanted {
                 await select(page)
-                await pause()
+                await pause(settle(page))
                 await capture(page, appearance, window: window(page), area: area)
             }
         }
@@ -138,13 +161,17 @@ public final class SnapshotRun {
     /// One state, when asked for: in each look, `show` sets it up, it settles, it is shot as
     /// `<name>-<appearance>.png`, and `hide` puts things back. For a sheet, `window` returns
     /// `WindowShot.mainWindow()?.attachedSheet`.
+    /// `when` is the name `APP_SNAPSHOT_PAGES` asks for when it isn't the file's (`"progress"` for
+    /// `apps-progress-light.png`); `group` ("sheets") shoots it when the group is asked for too.
     public func shoot(_ name: String,
+                      when key: String? = nil,
+                      in group: String? = nil,
                       window: @MainActor () -> NSWindow? = { nil },
                       area: WindowShot.Area = .window,
                       settle: Duration = .seconds(1),
                       show: @MainActor () async -> Void = {},
                       hide: (@MainActor () async -> Void)? = nil) async {
-        guard wants(name) else { return }
+        guard wants(key ?? name, in: group) else { return }
         await forEachAppearance { appearance in
             await show()
             await pause(settle)
